@@ -6,8 +6,14 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 @Entity
-@Table(name="evolyn_user_details")
+@Table(
+    name="evolyn_user_details",
+    uniqueConstraints = {
+        @UniqueConstraint(columnNames = "email")
+    }
+)
 public class AuthStoreDTO {
     @Id
     @Column(name = "uuid", updatable = false, nullable = false)
@@ -19,7 +25,7 @@ public class AuthStoreDTO {
     @Column(name = "last_name")
     private String lastName;
 
-    @Column(name = "email")
+    @Column(name = "email", unique = true)
     private String email;
 
     @Column(name = "password")
