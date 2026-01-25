@@ -43,9 +43,37 @@ public class VerifyUserDetails {
                         .status(HttpStatus.NOT_FOUND)
                         .body(Map.of("error", "Wrong Password"));
             }
+            user.setStatus("loggedin");
+            verifyUserRepository.save(user);
             return ResponseEntity.ok(Map.of(
                 "message", "User verified successfully"
             ));
+        } catch (Exception err) {
+            return ResponseEntity
+                    .status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", "User Not Found"));
+        }
+    }
+
+    @PostMapping("/loggedin/user")
+    public ResponseEntity<Object> verifyLoggedInUser(@RequestBody VerifyLoggedInUserDTO Request) {
+        System.out.println("Request Email : " + Request.getEmail());
+        try {
+            String userFirtName = "";
+            String userLastName = "";
+            boolean exists = verifyUserRepository.existsByEmail(Request.getEmail());
+            if(exists) {
+                Optional<AuthStoreDAO> userOpt = verifyUserRepository.findByEmail(Request.getEmail());
+                AuthStoreDAO user = userOpt.get();
+                userFirtName = user.getFirstName();
+                userLastName = user.getLastName();
+            }
+            return ResponseEntity
+                    .status(HttpStatus.OK)
+                    .body(Map.of(
+                        "firstName", userFirtName,
+                        "lastName", userLastName
+                    ));
         } catch (Exception err) {
             return ResponseEntity
                     .status(HttpStatus.BAD_REQUEST)

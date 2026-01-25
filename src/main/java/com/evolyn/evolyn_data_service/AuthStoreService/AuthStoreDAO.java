@@ -31,6 +31,9 @@ public class AuthStoreDAO {
     @Column(name = "password")
     private String password;
 
+    @Column(name = "status")
+    private String status;
+
      public UUID getUuid() {
         return uuid;
     }
@@ -69,5 +72,13 @@ public class AuthStoreDAO {
 
     public void setPassword(String phone) {
         this.password = phone;
+    }
+
+    public String status() { 
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

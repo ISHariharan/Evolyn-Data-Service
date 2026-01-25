@@ -27,6 +27,7 @@ public class AuthStoreService {
         entity.setUuid(Request.getUuid());
         entity.setPassword(Request.getPassword());
         entity.setEmail(Request.getEmail());
+        entity.setStatus("registed");
         if(authStoreRepository.existsByEmail(Request.getEmail())) {
             return ResponseEntity
                     .status(HttpStatus.CONFLICT)
