@@ -6,6 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface AuthStoreRepository extends JpaRepository<AuthStoreDTO, UUID> {
+public interface AuthStoreRepository extends JpaRepository<AuthStoreDAO, UUID> {
     boolean existsByEmail(String email);
 }

@@ -14,7 +14,7 @@ import jakarta.persistence.UniqueConstraint;
         @UniqueConstraint(columnNames = "email")
     }
 )
-public class AuthStoreDTO {
+public class AuthStoreDAO {
     @Id
     @Column(name = "uuid", updatable = false, nullable = false)
     private UUID uuid;

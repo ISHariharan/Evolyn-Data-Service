@@ -21,7 +21,7 @@ public class AuthStoreService {
     @PostMapping("/store/userdetails")
     public ResponseEntity<Object> storeUserDetails(@RequestBody UserDetailsAuthRequest Request){
         System.out.println("Request FirstName : " + Request.getFirstName());
-        AuthStoreDTO entity = new AuthStoreDTO();
+        AuthStoreDAO entity = new AuthStoreDAO();
         entity.setFirstName(Request.getFirstName());
         entity.setLastName(Request.getLastName());
         entity.setUuid(Request.getUuid());
