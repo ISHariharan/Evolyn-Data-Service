@@ -2,6 +2,7 @@ package com.evolyn.evolyn_data_service.VerifyUserDetails;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -61,18 +62,21 @@ public class VerifyUserDetails {
         try {
             String userFirtName = "";
             String userLastName = "";
+            UUID userId = null;
             boolean exists = verifyUserRepository.existsByEmail(Request.getEmail());
             if(exists) {
                 Optional<AuthStoreDAO> userOpt = verifyUserRepository.findByEmail(Request.getEmail());
                 AuthStoreDAO user = userOpt.get();
                 userFirtName = user.getFirstName();
                 userLastName = user.getLastName();
+                userId = user.getUuid();
             }
             return ResponseEntity
                     .status(HttpStatus.OK)
                     .body(Map.of(
                         "firstName", userFirtName,
-                        "lastName", userLastName
+                        "lastName", userLastName,
+                        "Id", userId
                     ));
         } catch (Exception err) {
             return ResponseEntity
