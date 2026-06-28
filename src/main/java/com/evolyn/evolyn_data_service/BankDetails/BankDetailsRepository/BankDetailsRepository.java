@@ -1,5 +1,6 @@
 package com.evolyn.evolyn_data_service.BankDetails.BankDetailsRepository;
-package com.evolyn.evolyn_data_service.BankDetails.BankDetailsEntity;
+
+import com.evolyn.evolyn_data_service.BankDetails.BankDetailsEntity;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.http.ResponseEntity;
