@@ -12,13 +12,13 @@ import jakarta.persistence.UniqueConstraint;
                 @UniqueConstraint(columnNames = "user_id"),
                 @UniqueConstraint(columnNames = "user_account_name"),
                 @UniqueConstraint(columnNames = "user_account_linked_credit_card_number"),
-                @UniqueConstraint(columnNames = "user_account_linked_debit_card_limit"),
+                @UniqueConstraint(columnNames = "user_account_linked_debit_card_number"),
         }
 )
 public class BankDetailsEntity {
     @Id
     @Column(name = "user_id", updatable = false, nullable = false, unique = true)
-    public String user_id;
+    public String userId;
 
     @Column(name = "user_account_name")
     public String accountName;
@@ -53,8 +53,12 @@ public class BankDetailsEntity {
     @Column(name = "user_cash_details")
     public String cashDetails;
 
+    public String getUserId() {
+        return this.userId;
+    }
+
     public String getUserID() {
-        return this.user_id;
+        return this.userId;
     }
 
     public String getAccountName() {
@@ -101,8 +105,8 @@ public class BankDetailsEntity {
         return this.cashDetails;
     }
 
-    public void setUser_id(String user_id) {
-        this.user_id = user_id;
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 
     public void setAccountName(String accountName) {
