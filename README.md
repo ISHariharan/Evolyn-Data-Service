@@ -157,3 +157,17 @@ POST /internal/**
 ## License
 
 This project is proprietary and intended for internal use within the Evolyn platform.
+
+---
+
+## Database migrations (Flyway)
+
+The database structure is versioned with Flyway. Every change is a numbered SQL file in
+`src/main/resources/db/migration` (`V1__baseline.sql`, `V2__...`). On start-up Flyway runs the
+files that haven't run yet, in order, exactly once, and records them in `flyway_schema_history`.
+
+* Never edit a migration that has already run anywhere; add a new `V<n>__...` file instead.
+* Hibernate is set to `ddl-auto=validate`: it checks the entities against the tables and refuses
+  to start on a mismatch, but never changes the database itself.
+* `V1__baseline.sql` describes the tables that existed before Flyway. Existing databases are
+  only marked as "at V1" (`baseline-on-migrate`); an empty database gets the tables created.
