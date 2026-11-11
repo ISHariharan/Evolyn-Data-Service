@@ -1,0 +1,7 @@
+# Keep the Docker build context small: Docker rebuilds from source anyway
+target
+.git
+.idea
+.oca
+.mvn
+**/.DS_Store

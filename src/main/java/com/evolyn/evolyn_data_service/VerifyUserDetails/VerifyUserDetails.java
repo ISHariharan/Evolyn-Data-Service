@@ -4,6 +4,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.evolyn.evolyn_data_service.Security.PasswordHasher;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,14 +19,16 @@ import com.evolyn.evolyn_data_service.AuthStoreService.AuthStoreDAO;
 @RequestMapping("/evolyn/api/internal")
 public class VerifyUserDetails {
     public final VerifyUserRepository verifyUserRepository;
-    public VerifyUserDetails(VerifyUserRepository verifyUserRepositor){
+    private final PasswordHasher passwordHasher;
+
+    public VerifyUserDetails(VerifyUserRepository verifyUserRepositor, PasswordHasher passwordHasher){
         this.verifyUserRepository = verifyUserRepositor;
+        this.passwordHasher = passwordHasher;
     }
 
     @PostMapping("/verify/userdetails")
     public ResponseEntity<Object> verifyUserDetails (@RequestBody VerifyUserDetailsDTO Request) {
-        System.out.println("Request Email : " + Request.getEmail());
-        System.out.println("Request Password : " + Request.getPassword());
+        // Never log Request.getPassword()
         try {
             if(!verifyUserRepository.existsByEmail(Request.getEmail())){
                 return ResponseEntity
@@ -39,7 +43,17 @@ public class VerifyUserDetails {
             }
 
             AuthStoreDAO user = userOpt.get();
-            if(!user.getPassword().equals(Request.getPassword())) {
+            String stored = user.getPassword();
+            boolean correct;
+            if (passwordHasher.isHashed(stored)) {
+                correct = passwordHasher.matches(Request.getPassword(), stored);
+            } else {
+                // Account from before hashing: compare the plain value once,
+                // and if it's right, replace it with a hash right away.
+                correct = stored != null && stored.equals(Request.getPassword());
+                if (correct) user.setPassword(passwordHasher.hash(Request.getPassword()));
+            }
+            if(!correct) {
                 return ResponseEntity
                         .status(HttpStatus.NOT_FOUND)
                         .body(Map.of("error", "Wrong Password"));

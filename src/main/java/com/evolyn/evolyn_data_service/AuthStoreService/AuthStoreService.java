@@ -2,6 +2,8 @@ package com.evolyn.evolyn_data_service.AuthStoreService;
 
 import java.util.Map;
 
+import com.evolyn.evolyn_data_service.Security.PasswordHasher;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,18 +16,21 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthStoreService {
 
     private final AuthStoreRepository authStoreRepository;
-    public AuthStoreService(AuthStoreRepository authStoreRepository) {
+    private final PasswordHasher passwordHasher;
+
+    public AuthStoreService(AuthStoreRepository authStoreRepository, PasswordHasher passwordHasher) {
         this.authStoreRepository = authStoreRepository;
+        this.passwordHasher = passwordHasher;
     }
 
     @PostMapping("/store/userdetails")
     public ResponseEntity<Object> storeUserDetails(@RequestBody UserDetailsAuthRequest Request){
-        System.out.println("Request FirstName : " + Request.getFirstName());
         AuthStoreDAO entity = new AuthStoreDAO();
         entity.setFirstName(Request.getFirstName());
         entity.setLastName(Request.getLastName());
         entity.setUuid(Request.getUuid());
-        entity.setPassword(Request.getPassword());
+        entity.setPassword(passwordHasher.hash(Request.getPassword())); // store the hash, never the password
+        // Note: Request.getPassword() must never be logged
         entity.setEmail(Request.getEmail());
         entity.setStatus("registed");
         if(authStoreRepository.existsByEmail(Request.getEmail())) {
