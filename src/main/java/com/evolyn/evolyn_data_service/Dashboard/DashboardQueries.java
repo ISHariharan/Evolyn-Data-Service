@@ -23,7 +23,7 @@ import com.evolyn.evolyn_data_service.Transactions.TransactionEntity;
 public interface DashboardQueries extends Repository<TransactionEntity, UUID> {
 
     interface TypeTotal { String getType(); BigDecimal getTotal(); Long getCount(); }
-    interface CategoryTotal { String getCategory(); BigDecimal getTotal(); Long getCount(); }
+    interface CategoryTotal { UUID getCategoryId(); String getName(); String getIcon(); String getColor(); BigDecimal getTotal(); Long getCount(); }
     interface AccountTotal { UUID getAccountId(); String getName(); String getLast4(); BigDecimal getTotal(); }
     interface MethodTotal { String getPaymentMethod(); BigDecimal getTotal(); }
     interface MerchantTotal { String getMerchant(); BigDecimal getTotal(); Long getCount(); }
@@ -38,11 +38,13 @@ public interface DashboardQueries extends Repository<TransactionEntity, UUID> {
         group by t.type""")
     List<TypeTotal> totalsByType(@Param("userId") UUID userId, @Param("from") LocalDate from, @Param("to") LocalDate to);
 
+    // JOIN to categories so the dashboard gets each category's current name, icon and colour
     @Query("""
-        select t.category as category, sum(t.amount) as total, count(t) as count
-        from TransactionEntity t
+        select c.categoryId as categoryId, c.name as name, c.icon as icon, c.color as color,
+               sum(t.amount) as total, count(t) as count
+        from TransactionEntity t join t.category c
         where t.userId = :userId and t.type = 'EXPENSE' and t.transactionDate between :from and :to
-        group by t.category
+        group by c.categoryId, c.name, c.icon, c.color
         order by sum(t.amount) desc""")
     List<CategoryTotal> spendingByCategory(@Param("userId") UUID userId, @Param("from") LocalDate from, @Param("to") LocalDate to);
 
@@ -77,7 +79,7 @@ public interface DashboardQueries extends Repository<TransactionEntity, UUID> {
 
     // "join fetch" loads each row's account in the same query (no N+1)
     @Query("""
-        select t from TransactionEntity t join fetch t.account
+        select t from TransactionEntity t join fetch t.account left join fetch t.category
         where t.userId = :userId and t.type = 'EXPENSE' and t.transactionDate between :from and :to
         order by t.amount desc, t.transactionDate desc""")
     List<TransactionEntity> biggestExpenses(@Param("userId") UUID userId, @Param("from") LocalDate from, @Param("to") LocalDate to, Pageable limit);

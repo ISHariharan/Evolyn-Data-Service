@@ -22,10 +22,10 @@ public interface TransactionRepository
     // @EntityGraph = also fetch the account in the same SQL query (a JOIN),
     // instead of one extra query per row (the "N+1 query" problem).
     @Override
-    @EntityGraph(attributePaths = "account")
+    @EntityGraph(attributePaths = { "account", "category" })
     Page<TransactionEntity> findAll(Specification<TransactionEntity> spec, Pageable pageable);
 
-    @EntityGraph(attributePaths = "account")
+    @EntityGraph(attributePaths = { "account", "category" })
     Optional<TransactionEntity> findByTransactionIdAndUserId(UUID transactionId, UUID userId);
 
     long countByAccount_AccountId(UUID accountId);

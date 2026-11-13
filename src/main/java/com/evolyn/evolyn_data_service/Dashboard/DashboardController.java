@@ -61,7 +61,7 @@ public class DashboardController {
         return new Summary(
                 from, to, spent, expenseCount, income, incomeCount,
                 queries.spendingByCategory(userId, from, to).stream()
-                        .map(r -> new CategoryTotal(r.getCategory(), r.getTotal(), r.getCount())).toList(),
+                        .map(r -> new CategoryTotal(r.getCategoryId(), r.getName(), r.getIcon(), r.getColor(), r.getTotal(), r.getCount())).toList(),
                 queries.spendingByAccount(userId, from, to).stream()
                         .map(r -> new AccountTotal(r.getAccountId(), r.getName(), r.getLast4(), r.getTotal())).toList(),
                 queries.spendingByPaymentMethod(userId, from, to).stream()

@@ -15,7 +15,10 @@ public record TransactionView(
         String type,
         BigDecimal amount,
         LocalDate transactionDate,
-        String category,
+        UUID categoryId,
+        String categoryName,
+        String categoryIcon,
+        String categoryColor,
         String merchant,
         String notes,
         String paymentMethod,
@@ -29,7 +32,11 @@ public record TransactionView(
     public static TransactionView from(TransactionEntity t) {
         return new TransactionView(
                 t.getTransactionId(), t.getType(), t.getAmount(), t.getTransactionDate(),
-                t.getCategory(), t.getMerchant(), t.getNotes(), t.getPaymentMethod(),
+                t.getCategory() == null ? null : t.getCategory().getCategoryId(),
+                t.getCategoryName(),
+                t.getCategory() == null ? "bx bx-purchase-tag-alt" : t.getCategory().getIcon(),
+                t.getCategory() == null ? "#64748b" : t.getCategory().getColor(),
+                t.getMerchant(), t.getNotes(), t.getPaymentMethod(),
                 t.getAccount().getAccountId(), t.getAccount().getName(), t.getAccount().getLast4(),
                 t.getSource(), t.getCreatedAt(), t.getUpdatedAt());
     }

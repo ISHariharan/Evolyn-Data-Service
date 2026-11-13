@@ -12,7 +12,7 @@ public final class DashboardResponses {
 
     private DashboardResponses() {}
 
-    public record CategoryTotal(String category, BigDecimal total, long count) {}
+    public record CategoryTotal(UUID categoryId, String name, String icon, String color, BigDecimal total, long count) {}
     public record AccountTotal(UUID accountId, String name, String last4, BigDecimal total) {}
     public record MethodTotal(String paymentMethod, BigDecimal total) {}
     public record MerchantTotal(String merchant, BigDecimal total, long count) {}

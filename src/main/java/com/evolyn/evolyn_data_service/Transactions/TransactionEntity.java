@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 import com.evolyn.evolyn_data_service.Accounts.AccountEntity;
+import com.evolyn.evolyn_data_service.Categories.CategoryEntity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -26,7 +27,8 @@ import jakarta.persistence.Table;
     name = "transactions",
     indexes = {
         @Index(name = "idx_transactions_user_date", columnList = "user_id, transaction_date"),
-        @Index(name = "idx_transactions_account", columnList = "account_id")
+        @Index(name = "idx_transactions_account", columnList = "account_id"),
+        @Index(name = "idx_transactions_category", columnList = "category_id")
     }
 )
 public class TransactionEntity {
@@ -54,8 +56,19 @@ public class TransactionEntity {
     @Column(name = "transaction_date", nullable = false)
     private LocalDate transactionDate;
 
+    // The category this transaction belongs to (source of truth).
+    // Nullable in the database only because the column was added to a table that
+    // already had rows; CategoryBackfill fills it for old rows, and the app always
+    // sets it for new ones.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    private CategoryEntity category;
+
+    // Copy of the category's name, kept in sync. This was the original column before
+    // categories became editable; we keep it as a readable backup (and the live
+    // database has it as NOT NULL).
     @Column(name = "category", nullable = false, length = 50)
-    private String category;
+    private String categoryName;
 
     // Who you paid / who paid you, e.g. "Swiggy", "Acme Corp"
     @Column(name = "merchant", nullable = false, length = 100)
@@ -96,8 +109,14 @@ public class TransactionEntity {
     public LocalDate getTransactionDate() { return transactionDate; }
     public void setTransactionDate(LocalDate transactionDate) { this.transactionDate = transactionDate; }
 
-    public String getCategory() { return category; }
-    public void setCategory(String category) { this.category = category; }
+    public CategoryEntity getCategory() { return category; }
+    public void setCategory(CategoryEntity category) {
+        this.category = category;
+        this.categoryName = category == null ? this.categoryName : category.getName();
+    }
+
+    public String getCategoryName() { return categoryName; }
+    public void setCategoryName(String categoryName) { this.categoryName = categoryName; }
 
     public String getMerchant() { return merchant; }
     public void setMerchant(String merchant) { this.merchant = merchant; }

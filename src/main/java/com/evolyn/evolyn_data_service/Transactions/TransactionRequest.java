@@ -15,7 +15,7 @@ public record TransactionRequest(
         String type,
         BigDecimal amount,
         LocalDate transactionDate,
-        String category,
+        UUID categoryId,
         String merchant,
         String notes,
         String paymentMethod) {
