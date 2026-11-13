@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.evolyn.evolyn_data_service.Accounts.AccountEntity;
+import com.evolyn.evolyn_data_service.Accounts.AccountRepository;
+import com.evolyn.evolyn_data_service.Dashboard.DashboardResponses.AccountBalance;
 import com.evolyn.evolyn_data_service.Dashboard.DashboardResponses.AccountTotal;
 import com.evolyn.evolyn_data_service.Dashboard.DashboardResponses.CategoryTotal;
 import com.evolyn.evolyn_data_service.Dashboard.DashboardResponses.DayTotal;
@@ -30,6 +33,7 @@ import com.evolyn.evolyn_data_service.Transactions.TransactionView;
  * Internal endpoints (only Evolyn-API calls these):
  *   GET /dashboard/summary?userId=&from=&to=   totals and breakdowns for one period
  *   GET /dashboard/trend?userId=&from=&to=     income vs spending per calendar month
+ *   GET /dashboard/accounts?userId=&today=     current balance of each account
  */
 @RestController
 @RequestMapping(value = "/evolyn/api/internal/dashboard", produces = "application/json")
@@ -38,9 +42,68 @@ public class DashboardController {
     private static final int TOP_N = 5;
 
     private final DashboardQueries queries;
+    private final BalanceQueries balances;
+    private final AccountRepository accounts;
 
-    public DashboardController(DashboardQueries queries) {
+    public DashboardController(DashboardQueries queries, BalanceQueries balances, AccountRepository accounts) {
         this.queries = queries;
+        this.balances = balances;
+        this.accounts = accounts;
+    }
+
+    /**
+     * Current balance of every account, plus each credit card's spend this cycle.
+     * `today` comes from the browser so "today" means the user's date, not the
+     * server's (Render runs on UTC, 5½ hours behind India).
+     */
+    @GetMapping("/accounts")
+    @Transactional(readOnly = true)
+    public List<AccountBalance> accountBalances(
+            @RequestParam("userId") UUID userId,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate today) {
+
+        // net[account] = income - expenses - transfers out + transfers in
+        Map<UUID, BigDecimal> net = new HashMap<>();
+        for (var f : balances.flowsByAccount(userId)) {
+            BigDecimal signed = "INCOME".equals(f.getType()) ? f.getTotal() : f.getTotal().negate();
+            net.merge(f.getAccountId(), signed, BigDecimal::add);
+        }
+        for (var in : balances.transfersIn(userId)) {
+            net.merge(in.getAccountId(), in.getTotal(), BigDecimal::add);
+        }
+
+        List<AccountBalance> result = new ArrayList<>();
+        for (AccountEntity a : accounts.findByUserIdOrderByCreatedAtAsc(userId)) {
+            boolean card = "CREDIT_CARD".equals(a.getAccountType());
+            BigDecimal flow = net.getOrDefault(a.getAccountId(), BigDecimal.ZERO);
+
+            BigDecimal balance = null;
+            if (a.getOpeningBalance() != null) {
+                // Card: spending raises what you owe, payments and refunds lower it
+                balance = card ? a.getOpeningBalance().subtract(flow) : a.getOpeningBalance().add(flow);
+            }
+
+            LocalDate cycleStart = null, nextStatement = null;
+            BigDecimal cycleSpent = null;
+            if (card) {
+                Integer day = a.getStatementDay();
+                if (day != null) {
+                    // A statement on day D closes the cycle; the next one starts on D+1
+                    LocalDate base = today.getDayOfMonth() > day ? today : today.minusMonths(1);
+                    cycleStart = base.withDayOfMonth(day).plusDays(1);
+                    nextStatement = cycleStart.plusMonths(1).minusDays(1);
+                } else {
+                    cycleStart = today.withDayOfMonth(1);
+                    nextStatement = today.withDayOfMonth(today.lengthOfMonth());
+                }
+                cycleSpent = balances.spentOn(a.getAccountId(), cycleStart, today);
+            }
+
+            result.add(new AccountBalance(a.getAccountId(), a.getName(), a.getLast4(), a.getAccountType(),
+                    a.getOpeningBalance(), a.getOpeningBalanceDate(), balance, a.getCreditLimit(),
+                    a.getStatementDay(), cycleStart, nextStatement, cycleSpent));
+        }
+        return result;
     }
 
     @GetMapping("/summary")
@@ -86,6 +149,7 @@ public class DashboardController {
         for (var row : queries.totalsByMonth(userId, from, to)) {
             var totals = byMonth.computeIfAbsent(YearMonth.of(row.getYear(), row.getMonth()),
                     m -> new BigDecimal[] { BigDecimal.ZERO, BigDecimal.ZERO });
+            if ("TRANSFER".equals(row.getType())) continue; // moving money isn't income or spending
             totals["INCOME".equals(row.getType()) ? 0 : 1] = row.getTotal();
         }
 

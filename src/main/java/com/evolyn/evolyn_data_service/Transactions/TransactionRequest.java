@@ -12,6 +12,7 @@ import java.util.UUID;
 public record TransactionRequest(
         UUID userId,
         UUID accountId,
+        UUID toAccountId,      // TRANSFER only
         String type,
         BigDecimal amount,
         LocalDate transactionDate,

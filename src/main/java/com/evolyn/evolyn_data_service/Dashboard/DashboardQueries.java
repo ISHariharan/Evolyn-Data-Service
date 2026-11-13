@@ -95,7 +95,7 @@ public interface DashboardQueries extends Repository<TransactionEntity, UUID> {
     @Query("""
         select year(t.transactionDate) as year, month(t.transactionDate) as month, t.type as type, sum(t.amount) as total
         from TransactionEntity t
-        where t.userId = :userId and t.transactionDate between :from and :to
+        where t.userId = :userId and t.transactionDate between :from and :to and t.type <> 'TRANSFER'
         group by year(t.transactionDate), month(t.transactionDate), t.type""")
     List<MonthTotal> totalsByMonth(@Param("userId") UUID userId, @Param("from") LocalDate from, @Param("to") LocalDate to);
 }

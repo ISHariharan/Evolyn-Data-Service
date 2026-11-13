@@ -25,6 +25,9 @@ public record TransactionView(
         UUID accountId,
         String accountName,
         String accountLast4,
+        UUID toAccountId,
+        String toAccountName,
+        String toAccountLast4,
         String source,
         Instant createdAt,
         Instant updatedAt) {
@@ -34,10 +37,13 @@ public record TransactionView(
                 t.getTransactionId(), t.getType(), t.getAmount(), t.getTransactionDate(),
                 t.getCategory() == null ? null : t.getCategory().getCategoryId(),
                 t.getCategoryName(),
-                t.getCategory() == null ? "bx bx-purchase-tag-alt" : t.getCategory().getIcon(),
+                t.getCategory() == null ? ("TRANSFER".equals(t.getType()) ? "bx bx-transfer-alt" : "bx bx-purchase-tag-alt") : t.getCategory().getIcon(),
                 t.getCategory() == null ? "#64748b" : t.getCategory().getColor(),
                 t.getMerchant(), t.getNotes(), t.getPaymentMethod(),
                 t.getAccount().getAccountId(), t.getAccount().getName(), t.getAccount().getLast4(),
+                t.getToAccount() == null ? null : t.getToAccount().getAccountId(),
+                t.getToAccount() == null ? null : t.getToAccount().getName(),
+                t.getToAccount() == null ? null : t.getToAccount().getLast4(),
                 t.getSource(), t.getCreatedAt(), t.getUpdatedAt());
     }
 }

@@ -33,6 +33,27 @@ public final class DashboardResponses {
             List<TransactionView> biggestExpenses,
             List<DayTotal> dailySpending) {}
 
+    /**
+     * An account's current position.
+     *  balance: for bank / cash / wallet, what's in it; for a credit card, what you owe.
+     *           null when no opening balance has been set (it can't be known).
+     *  cycle*:  credit cards only; the current billing cycle (or calendar month when no
+     *           statement day is set) and how much was spent on the card in it so far.
+     */
+    public record AccountBalance(
+            UUID accountId,
+            String name,
+            String last4,
+            String accountType,
+            BigDecimal openingBalance,
+            LocalDate openingBalanceDate,
+            BigDecimal balance,
+            BigDecimal creditLimit,
+            Integer statementDay,
+            LocalDate cycleStart,
+            LocalDate nextStatementDate,
+            BigDecimal cycleSpent) {}
+
     /** One bar pair in the month-by-month chart. month = "2026-10". */
     public record MonthTotal(String month, BigDecimal income, BigDecimal spent) {}
 }

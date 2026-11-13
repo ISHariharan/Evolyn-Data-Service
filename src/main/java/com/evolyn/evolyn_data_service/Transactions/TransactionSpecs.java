@@ -26,7 +26,13 @@ final class TransactionSpecs {
             where.add(cb.equal(root.get("userId"), userId));
             if (type != null && !type.isBlank()) where.add(cb.equal(root.get("type"), type));
             if (categoryId != null) where.add(cb.equal(root.get("category").get("categoryId"), categoryId));
-            if (accountId != null) where.add(cb.equal(root.get("account").get("accountId"), accountId));
+            if (accountId != null) {
+                // money out of this account, or a transfer into it
+                var toAccount = root.join("toAccount", jakarta.persistence.criteria.JoinType.LEFT);
+                where.add(cb.or(
+                        cb.equal(root.get("account").get("accountId"), accountId),
+                        cb.equal(toAccount.get("accountId"), accountId)));
+            }
             if (from != null) where.add(cb.greaterThanOrEqualTo(root.get("transactionDate"), from));
             if (to != null) where.add(cb.lessThanOrEqualTo(root.get("transactionDate"), to));
             return cb.and(where.toArray(Predicate[]::new));

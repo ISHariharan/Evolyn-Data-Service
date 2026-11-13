@@ -28,7 +28,8 @@ import jakarta.persistence.Table;
     indexes = {
         @Index(name = "idx_transactions_user_date", columnList = "user_id, transaction_date"),
         @Index(name = "idx_transactions_account", columnList = "account_id"),
-        @Index(name = "idx_transactions_category", columnList = "category_id")
+        @Index(name = "idx_transactions_category", columnList = "category_id"),
+        @Index(name = "idx_transactions_to_account", columnList = "to_account_id")
     }
 )
 public class TransactionEntity {
@@ -45,7 +46,13 @@ public class TransactionEntity {
     @JoinColumn(name = "account_id", nullable = false)
     private AccountEntity account;
 
-    // "EXPENSE" or "INCOME"
+    // TRANSFER only: the account the money moves INTO (e.g. paying a card bill from
+    // a bank account: account = bank, toAccount = card). Null for expenses and income.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "to_account_id")
+    private AccountEntity toAccount;
+
+    // "EXPENSE", "INCOME" or "TRANSFER"
     @Column(name = "type", nullable = false, length = 10)
     private String type;
 
@@ -99,6 +106,9 @@ public class TransactionEntity {
 
     public AccountEntity getAccount() { return account; }
     public void setAccount(AccountEntity account) { this.account = account; }
+
+    public AccountEntity getToAccount() { return toAccount; }
+    public void setToAccount(AccountEntity toAccount) { this.toAccount = toAccount; }
 
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }

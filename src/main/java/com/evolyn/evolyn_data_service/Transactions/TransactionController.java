@@ -55,15 +55,15 @@ public class TransactionController {
     public ResponseEntity<Object> createTransaction(@RequestBody TransactionRequest request) {
         Optional<AccountEntity> account = accountRepository.findByAccountIdAndUserId(request.accountId(), request.userId());
         if (account.isEmpty()) return accountNotFound();
-        Optional<CategoryEntity> category = categoryFor(request);
-        if (category.isEmpty()) return categoryInvalid();
+        Object links = links(request, account.get());
+        if (links instanceof ResponseEntity<?> error) return castError(error);
 
         TransactionEntity entity = new TransactionEntity();
         entity.setTransactionId(UUID.randomUUID());
         entity.setUserId(request.userId());
         entity.setSource("MANUAL");
         entity.setCreatedAt(Instant.now());
-        apply(entity, request, account.get(), category.get());
+        apply(entity, request, account.get(), (Links) links);
         entity.setUpdatedAt(entity.getCreatedAt()); // brand new: "never edited"
 
         TransactionEntity saved = transactionRepository.save(entity);
@@ -108,11 +108,11 @@ public class TransactionController {
 
         Optional<AccountEntity> account = accountRepository.findByAccountIdAndUserId(request.accountId(), request.userId());
         if (account.isEmpty()) return accountNotFound();
-        Optional<CategoryEntity> category = categoryFor(request);
-        if (category.isEmpty()) return categoryInvalid();
+        Object links = links(request, account.get());
+        if (links instanceof ResponseEntity<?> error) return castError(error);
 
         TransactionEntity entity = existing.get();
-        apply(entity, request, account.get(), category.get());
+        apply(entity, request, account.get(), (Links) links);
         return ResponseEntity.ok(TransactionView.from(transactionRepository.save(entity)));
     }
 
@@ -127,9 +127,11 @@ public class TransactionController {
 
     // Copies the editable fields from the request onto the entity
     private static void apply(TransactionEntity entity, TransactionRequest request, AccountEntity account,
-                              CategoryEntity category) {
+                              Links links) {
         entity.setAccount(account);
-        entity.setCategory(category); // also copies its name into the backup column
+        entity.setToAccount(links.toAccount());
+        entity.setCategory(links.category()); // also copies its name into the backup column
+        if (links.category() == null) entity.setCategoryName("Transfer"); // the backup column can't be empty
         entity.setType(request.type());
         entity.setAmount(request.amount());
         entity.setTransactionDate(request.transactionDate());
@@ -138,6 +140,37 @@ public class TransactionController {
         entity.setNotes(notes == null || notes.isBlank() ? null : notes.trim());
         entity.setPaymentMethod(request.paymentMethod());
         entity.setUpdatedAt(Instant.now());
+    }
+
+    // What a transaction points at besides its account
+    private record Links(CategoryEntity category, AccountEntity toAccount) {}
+
+    /**
+     * EXPENSE / INCOME: needs one of the user's categories of the same type.
+     * TRANSFER: needs a second account (where the money goes) and no category,
+     * e.g. paying a credit card bill, withdrawing cash, topping up a wallet.
+     * Returns Links, or an error response.
+     */
+    private Object links(TransactionRequest request, AccountEntity from) {
+        if ("TRANSFER".equals(request.type())) {
+            if (request.toAccountId() == null) return badRequest("Choose the account the money goes to");
+            Optional<AccountEntity> to = accountRepository.findByAccountIdAndUserId(request.toAccountId(), request.userId());
+            if (to.isEmpty()) return accountNotFound();
+            if (to.get().getAccountId().equals(from.getAccountId())) return badRequest("Choose two different accounts");
+            return new Links(null, to.get());
+        }
+        Optional<CategoryEntity> category = categoryFor(request);
+        if (category.isEmpty()) return categoryInvalid();
+        return new Links(category.get(), null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static ResponseEntity<Object> castError(ResponseEntity<?> error) {
+        return (ResponseEntity<Object>) error;
+    }
+
+    private static ResponseEntity<Object> badRequest(String message) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", message));
     }
 
     // The category must belong to this user and match the transaction's type

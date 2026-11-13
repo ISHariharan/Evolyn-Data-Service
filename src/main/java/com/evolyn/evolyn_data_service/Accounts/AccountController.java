@@ -38,7 +38,9 @@ public class AccountController {
     }
 
     @PostMapping
-    public ResponseEntity<AccountEntity> createAccount(@RequestBody AccountRequest request) {
+    public ResponseEntity<Object> createAccount(@RequestBody AccountRequest request) {
+        String problem = check(request);
+        if (problem != null) return badRequest(problem);
         AccountEntity account = new AccountEntity();
         account.setAccountId(UUID.randomUUID());
         account.setUserId(request.userId());
@@ -49,6 +51,8 @@ public class AccountController {
 
     @PutMapping("/{accountId}")
     public ResponseEntity<Object> updateAccount(@PathVariable UUID accountId, @RequestBody AccountRequest request) {
+        String problem = check(request);
+        if (problem != null) return badRequest(problem);
         return accountRepository.findByAccountIdAndUserId(accountId, request.userId())
                 .<ResponseEntity<Object>>map(account -> {
                     apply(account, request);
@@ -63,7 +67,9 @@ public class AccountController {
         if (account.isEmpty()) return notFound();
 
         // Deleting an account would orphan its transactions, so refuse instead
-        long used = transactionRepository.countByAccount_AccountId(accountId);
+        // Counts transactions from this account and transfers into it
+        long used = transactionRepository.countByAccount_AccountId(accountId)
+                + transactionRepository.countByToAccount_AccountId(accountId);
         if (used > 0) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                     "message", "This account has " + used + " transaction(s). Move or delete them first."));
@@ -77,6 +83,30 @@ public class AccountController {
         account.setAccountType(request.accountType());
         String last4 = request.last4();
         account.setLast4(last4 == null || last4.isBlank() ? null : last4.trim());
+
+        account.setOpeningBalance(request.openingBalance());
+        account.setOpeningBalanceDate(request.openingBalance() == null ? null : request.openingBalanceDate());
+
+        // Limit and statement day only mean something for credit cards
+        boolean card = "CREDIT_CARD".equals(request.accountType());
+        account.setCreditLimit(card ? request.creditLimit() : null);
+        account.setStatementDay(card ? request.statementDay() : null);
+    }
+
+    // Rules that need more than one field at once
+    private static String check(AccountRequest request) {
+        if (request.openingBalance() != null && request.openingBalanceDate() == null) {
+            return "Choose the date the opening balance is from";
+        }
+        Integer day = request.statementDay();
+        if (day != null && (day < 1 || day > 28)) {
+            return "Statement day must be between 1 and 28";
+        }
+        return null;
+    }
+
+    private static ResponseEntity<Object> badRequest(String message) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", message));
     }
 
     private static ResponseEntity<Object> notFound() {
