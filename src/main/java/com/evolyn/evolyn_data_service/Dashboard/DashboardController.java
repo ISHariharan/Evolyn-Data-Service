@@ -77,11 +77,12 @@ public class DashboardController {
             boolean card = "CREDIT_CARD".equals(a.getAccountType());
             BigDecimal flow = net.getOrDefault(a.getAccountId(), BigDecimal.ZERO);
 
-            BigDecimal balance = null;
-            if (a.getOpeningBalance() != null) {
-                // Card: spending raises what you owe, payments and refunds lower it
-                balance = card ? a.getOpeningBalance().subtract(flow) : a.getOpeningBalance().add(flow);
-            }
+            // Without a starting balance, start from zero and use every transaction
+            String source = a.getOpeningBalance() != null ? "OPENING_BALANCE"
+                    : net.containsKey(a.getAccountId()) ? "TRANSACTIONS" : "NONE";
+            BigDecimal opening = a.getOpeningBalance() == null ? BigDecimal.ZERO : a.getOpeningBalance();
+            // Card: spending raises what you owe, payments and refunds lower it
+            BigDecimal balance = card ? opening.subtract(flow) : opening.add(flow);
 
             LocalDate cycleStart = null, nextStatement = null;
             BigDecimal cycleSpent = null;
@@ -100,7 +101,7 @@ public class DashboardController {
             }
 
             result.add(new AccountBalance(a.getAccountId(), a.getName(), a.getLast4(), a.getAccountType(),
-                    a.getOpeningBalance(), a.getOpeningBalanceDate(), balance, a.getCreditLimit(),
+                    a.getOpeningBalance(), a.getOpeningBalanceDate(), balance, source, a.getCreditLimit(),
                     a.getStatementDay(), cycleStart, nextStatement, cycleSpent));
         }
         return result;

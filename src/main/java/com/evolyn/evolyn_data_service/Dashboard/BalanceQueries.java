@@ -12,9 +12,11 @@ import org.springframework.data.repository.query.Param;
 import com.evolyn.evolyn_data_service.Transactions.TransactionEntity;
 
 /**
- * Sums used to work out account balances. Only transactions dated on or after an
- * account's opening-balance date count: anything earlier is already inside the
- * opening balance the user typed in.
+ * Sums used to work out account balances.
+ *  - Account WITH a starting balance: only transactions dated on or after its date
+ *    count (anything earlier is already inside the balance the user typed in).
+ *  - Account WITHOUT one: every transaction counts, i.e. the balance is calculated
+ *    purely from what's been recorded, starting from zero.
  */
 public interface BalanceQueries extends Repository<TransactionEntity, UUID> {
 
@@ -25,8 +27,8 @@ public interface BalanceQueries extends Repository<TransactionEntity, UUID> {
     @Query("""
         select a.accountId as accountId, t.type as type, sum(t.amount) as total
         from TransactionEntity t join t.account a
-        where t.userId = :userId and a.openingBalanceDate is not null
-          and t.transactionDate >= a.openingBalanceDate
+        where t.userId = :userId
+          and (a.openingBalanceDate is null or t.transactionDate >= a.openingBalanceDate)
         group by a.accountId, t.type""")
     List<Flow> flowsByAccount(@Param("userId") UUID userId);
 
@@ -34,8 +36,8 @@ public interface BalanceQueries extends Repository<TransactionEntity, UUID> {
     @Query("""
         select a.accountId as accountId, sum(t.amount) as total
         from TransactionEntity t join t.toAccount a
-        where t.userId = :userId and t.type = 'TRANSFER' and a.openingBalanceDate is not null
-          and t.transactionDate >= a.openingBalanceDate
+        where t.userId = :userId and t.type = 'TRANSFER'
+          and (a.openingBalanceDate is null or t.transactionDate >= a.openingBalanceDate)
         group by a.accountId""")
     List<Inflow> transfersIn(@Param("userId") UUID userId);
 

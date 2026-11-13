@@ -36,7 +36,9 @@ public final class DashboardResponses {
     /**
      * An account's current position.
      *  balance: for bank / cash / wallet, what's in it; for a credit card, what you owe.
-     *           null when no opening balance has been set (it can't be known).
+     *  balanceSource: OPENING_BALANCE  - starting balance + transactions since its date
+     *                 TRANSACTIONS     - no starting balance; calculated from all transactions
+     *                 NONE             - no starting balance and no transactions yet (balance 0)
      *  cycle*:  credit cards only; the current billing cycle (or calendar month when no
      *           statement day is set) and how much was spent on the card in it so far.
      */
@@ -48,6 +50,7 @@ public final class DashboardResponses {
             BigDecimal openingBalance,
             LocalDate openingBalanceDate,
             BigDecimal balance,
+            String balanceSource,
             BigDecimal creditLimit,
             Integer statementDay,
             LocalDate cycleStart,
