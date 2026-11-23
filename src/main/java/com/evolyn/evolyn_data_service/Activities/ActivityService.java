@@ -213,8 +213,12 @@ public class ActivityService {
     }
 
     private ActivityCalculationEntity calculate(UserActivityEntity a, ActivityCalculationEntity previous) {
+        // The latest weight on or before the activity's day. For an activity from
+        // before the first weight was saved (e.g. yesterday's practice, logged right
+        // after setting up), use that first weight; which day it came from is saved.
         WeightLogEntity weight = weights
                 .findFirstByUserIdAndRecordedOnLessThanEqualOrderByRecordedOnDesc(a.getUserId(), a.getActivityDate())
+                .or(() -> weights.findFirstByUserIdOrderByRecordedOnAsc(a.getUserId()))
                 .orElseThrow(() -> new Problem(HttpStatus.CONFLICT, Map.of(
                         "code", "WEIGHT_REQUIRED",
                         "message", "Save your weight first: calories are worked out from it")));

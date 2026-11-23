@@ -16,5 +16,8 @@ public interface WeightLogRepository extends JpaRepository<WeightLogEntity, UUID
     // The weight that applies on a given day: the latest entry on or before it
     Optional<WeightLogEntity> findFirstByUserIdAndRecordedOnLessThanEqualOrderByRecordedOnDesc(UUID userId, LocalDate day);
 
+    // The first weight someone ever saved (for activities from before it)
+    Optional<WeightLogEntity> findFirstByUserIdOrderByRecordedOnAsc(UUID userId);
+
     List<WeightLogEntity> findByUserIdAndRecordedOnBetweenOrderByRecordedOnDesc(UUID userId, LocalDate from, LocalDate to);
 }
