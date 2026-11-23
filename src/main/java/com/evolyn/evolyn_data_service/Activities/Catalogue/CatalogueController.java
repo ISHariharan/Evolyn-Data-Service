@@ -40,7 +40,8 @@ public class CatalogueController {
         }
     }
 
-    public record Heading(String code, String name) {}
+    // countsForGoals: whether this heading's activities add to tribe goals, challenges and streaks
+    public record Heading(String code, String name, boolean countsForGoals) {}
 
     public record Catalogue(String edition, String attribution, List<Heading> headings, List<Activity> activities) {}
 
@@ -51,7 +52,7 @@ public class CatalogueController {
         return new Catalogue(
                 edition,
                 ATTRIBUTION,
-                headings.findAllByOrderByHeadingCodeAsc().stream().map(h -> new Heading(h.getHeadingCode(), h.getName())).toList(),
+                headings.findAllByOrderByHeadingCodeAsc().stream().map(h -> new Heading(h.getHeadingCode(), h.getName(), h.isCountsForGoals())).toList(),
                 rows.stream().map(Activity::of).toList());
     }
 

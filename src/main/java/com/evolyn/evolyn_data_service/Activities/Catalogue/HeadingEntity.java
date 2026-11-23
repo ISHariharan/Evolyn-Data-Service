@@ -17,6 +17,11 @@ public class HeadingEntity {
     @Column(name = "name", nullable = false, length = 60)
     private String name;
 
+    // Whether activities under this heading add to tribe goals, challenges and streaks (V6)
+    @Column(name = "counts_for_goals", nullable = false)
+    private boolean countsForGoals;
+
     public String getHeadingCode() { return headingCode; }
     public String getName() { return name; }
+    public boolean isCountsForGoals() { return countsForGoals; }
 }
