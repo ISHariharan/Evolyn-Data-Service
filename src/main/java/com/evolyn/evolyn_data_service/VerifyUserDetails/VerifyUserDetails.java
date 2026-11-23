@@ -8,6 +8,8 @@ import com.evolyn.evolyn_data_service.Security.PasswordHasher;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -60,14 +62,36 @@ public class VerifyUserDetails {
             }
             user.setStatus("loggedin");
             verifyUserRepository.save(user);
+            // Evolyn-API puts the id in the login token, so later requests
+            // never need to say who they are
             return ResponseEntity.ok(Map.of(
-                "message", "User verified successfully"
+                "message", "User verified successfully",
+                "id", user.getUuid(),
+                "email", user.getEmail(),
+                "firstName", nullToEmpty(user.getFirstName()),
+                "lastName", nullToEmpty(user.getLastName())
             ));
         } catch (Exception err) {
             return ResponseEntity
                     .status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", "User Not Found"));
         }
+    }
+
+    /** The logged-in user's own details, by id (the id comes from their login token in Evolyn-API). */
+    @GetMapping("/users/{userId}")
+    public ResponseEntity<Object> userById(@PathVariable UUID userId) {
+        return verifyUserRepository.findById(userId)
+                .<ResponseEntity<Object>>map(user -> ResponseEntity.ok(Map.of(
+                        "id", user.getUuid(),
+                        "email", nullToEmpty(user.getEmail()),
+                        "firstName", nullToEmpty(user.getFirstName()),
+                        "lastName", nullToEmpty(user.getLastName()))))
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "User not found")));
+    }
+
+    private static String nullToEmpty(String s) {
+        return s == null ? "" : s;
     }
 
     @PostMapping("/loggedin/user")
