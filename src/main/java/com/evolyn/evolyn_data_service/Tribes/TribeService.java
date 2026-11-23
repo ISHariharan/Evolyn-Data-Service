@@ -365,8 +365,11 @@ public class TribeService {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    /** The tribe, if userId is an active member (and, when changing it, not archived). */
-    TribeEntity requireMember(UUID tribeId, UUID userId, boolean forChange) {
+    /**
+     * The tribe, if userId is an active member (and, when changing it, not archived).
+     * Public so other features (goals, dashboard) apply exactly the same membership rule.
+     */
+    public TribeEntity requireMember(UUID tribeId, UUID userId, boolean forChange) {
         require(userId);
         // Same answer whether the tribe doesn't exist or you're not in it: don't reveal which
         TribeEntity tribe = tribes.findById(tribeId)
