@@ -69,7 +69,8 @@ public class VerifyUserDetails {
                 "id", user.getUuid(),
                 "email", user.getEmail(),
                 "firstName", nullToEmpty(user.getFirstName()),
-                "lastName", nullToEmpty(user.getLastName())
+                "lastName", nullToEmpty(user.getLastName()),
+                "profileId", nullToEmpty(user.getProfileId()) // "" = not chosen yet
             ));
         } catch (Exception err) {
             return ResponseEntity
@@ -86,7 +87,8 @@ public class VerifyUserDetails {
                         "id", user.getUuid(),
                         "email", nullToEmpty(user.getEmail()),
                         "firstName", nullToEmpty(user.getFirstName()),
-                        "lastName", nullToEmpty(user.getLastName()))))
+                        "lastName", nullToEmpty(user.getLastName()),
+                        "profileId", nullToEmpty(user.getProfileId()))))
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "User not found")));
     }
 

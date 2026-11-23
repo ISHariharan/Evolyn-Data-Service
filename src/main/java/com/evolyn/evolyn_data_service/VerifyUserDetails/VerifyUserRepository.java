@@ -13,4 +13,5 @@ import com.evolyn.evolyn_data_service.AuthStoreService.AuthStoreDAO;
 public interface VerifyUserRepository extends JpaRepository<AuthStoreDAO, UUID> {
     boolean existsByEmail(String email);
     Optional<AuthStoreDAO> findByEmail(String email);
+    boolean existsByProfileId(String profileId);
 }

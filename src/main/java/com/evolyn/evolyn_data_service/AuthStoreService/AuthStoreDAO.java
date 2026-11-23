@@ -34,6 +34,18 @@ public class AuthStoreDAO {
     @Column(name = "status")
     private String status;
 
+    // Public handle, e.g. "arun_k" (V7). NULL for accounts made before Profile IDs.
+    @Column(name = "profile_id", length = 20, unique = true)
+    private String profileId;
+
+    public String getProfileId() {
+        return profileId;
+    }
+
+    public void setProfileId(String profileId) {
+        this.profileId = profileId;
+    }
+
      public UUID getUuid() {
         return uuid;
     }

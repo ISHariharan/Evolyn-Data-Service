@@ -2,7 +2,10 @@ package com.evolyn.evolyn_data_service.AuthStoreService;
 
 import java.util.Map;
 
+import com.evolyn.evolyn_data_service.Profile.ProfileIds;
 import com.evolyn.evolyn_data_service.Security.PasswordHasher;
+import com.evolyn.evolyn_data_service.VerifyUserDetails.VerifyUserRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,10 +19,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthStoreService {
 
     private final AuthStoreRepository authStoreRepository;
+    private final VerifyUserRepository users;
     private final PasswordHasher passwordHasher;
 
-    public AuthStoreService(AuthStoreRepository authStoreRepository, PasswordHasher passwordHasher) {
+    public AuthStoreService(AuthStoreRepository authStoreRepository, VerifyUserRepository users,
+                            PasswordHasher passwordHasher) {
         this.authStoreRepository = authStoreRepository;
+        this.users = users;
         this.passwordHasher = passwordHasher;
     }
 
@@ -38,9 +44,23 @@ public class AuthStoreService {
                     .status(HttpStatus.CONFLICT)
                     .body(Map.of("error", "Email already registed"));
         }
+        // Every new account picks a Profile ID (friends find each other by it)
+        String profileId = ProfileIds.normalize(Request.getProfileId());
+        String problem = ProfileIds.problem(profileId);
+        if (problem != null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", problem));
+        }
+        if (users.existsByProfileId(profileId)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", "@" + profileId + " is already taken", "code", "PROFILE_ID_TAKEN"));
+        }
+        entity.setProfileId(profileId);
         try {
-            authStoreRepository.save(entity);
+            authStoreRepository.saveAndFlush(entity);
             return ResponseEntity.ok().build();
+        } catch (DataIntegrityViolationException raced) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("error", "That email or Profile ID was just taken. Try again."));
         } catch (Exception err) {
             System.out.println("Error while saving user data : " + err);
             return ResponseEntity
