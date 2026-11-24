@@ -3,7 +3,6 @@ package com.evolyn.evolyn_data_service.Goals;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Date;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
@@ -37,21 +36,24 @@ import com.evolyn.evolyn_data_service.Tribes.TribeService;
  * Nothing here is stored: it's added up from the activities every time, so an
  * edited or deleted activity is reflected immediately.
  *
- * Any member can set the goal (no roles yet). Past months are read-only.
+ * The month's goal isn't typed in: it's the sum of the members' daily goals over the
+ * month's days (DailyGoalMath). Someone who sets or changes their daily goal changes
+ * the tribe's target from that day on; earlier days keep what they had.
  */
 @Service
 public class TribeDashboardService {
 
     static final String METRIC = "CALORIES_BURNED";
     static final String UNIT = "kcal";
-    static final BigDecimal MAX_TARGET = new BigDecimal("10000000");
 
     private final TribeService tribes;
     private final NamedParameterJdbcTemplate sql;
+    private final DailyGoalService dailyGoals;
 
-    public TribeDashboardService(TribeService tribes, NamedParameterJdbcTemplate sql) {
+    public TribeDashboardService(TribeService tribes, NamedParameterJdbcTemplate sql, DailyGoalService dailyGoals) {
         this.tribes = tribes;
         this.sql = sql;
+        this.dailyGoals = dailyGoals;
     }
 
     /** "2026-11" -> November 2026; null -> this month in India. */
@@ -62,68 +64,6 @@ public class TribeDashboardService {
         } catch (RuntimeException e) {
             throw ApiProblem.of(HttpStatus.BAD_REQUEST, "month must look like 2026-11");
         }
-    }
-
-    // ── Setting the goal ─────────────────────────────────────────────────────
-
-    @Transactional
-    public Map<String, Object> setGoal(UUID tribeId, UUID userId, YearMonth month, BigDecimal target) {
-        tribes.requireMember(tribeId, userId, true);
-        if (month.isBefore(YearMonth.from(EvolynTime.today()))) {
-            throw ApiProblem.of(HttpStatus.CONFLICT, "Past months can't be changed");
-        }
-        if (target == null || target.signum() <= 0 || target.compareTo(MAX_TARGET) > 0) {
-            throw ApiProblem.of(HttpStatus.BAD_REQUEST, "Target must be between 1 and 10,000,000 kcal");
-        }
-        BigDecimal t = target.setScale(0, RoundingMode.HALF_UP);
-        MapSqlParameterSource p = new MapSqlParameterSource("tribeId", tribeId)
-                .addValue("metric", METRIC)
-                .addValue("start", Date.valueOf(month.atDay(1)))
-                .addValue("end", Date.valueOf(month.atEndOfMonth()))
-                .addValue("target", t)
-                .addValue("userId", userId)
-                .addValue("now", java.sql.Timestamp.from(Instant.now()));
-
-        List<Map<String, Object>> existing = sql.queryForList(
-                "SELECT goal_id, target_value FROM tribe_goals WHERE tribe_id = :tribeId AND metric_type = :metric AND period_start = :start",
-                p);
-        UUID goalId;
-        BigDecimal old = null;
-        if (existing.isEmpty()) {
-            goalId = UUID.randomUUID();
-            sql.update("""
-                    INSERT INTO tribe_goals (goal_id, tribe_id, metric_type, unit, target_value, period_type,
-                                             period_start, period_end, created_by, created_at, updated_by, updated_at)
-                    VALUES (:goalId, :tribeId, :metric, :unit, :target, 'MONTHLY', :start, :end, :userId, :now, :userId, :now)
-                    """, p.addValue("goalId", goalId).addValue("unit", UNIT));
-        } else {
-            goalId = (UUID) existing.get(0).get("goal_id");
-            old = (BigDecimal) existing.get(0).get("target_value");
-            if (old.compareTo(t) == 0) return dashboard(tribeId, userId, month); // unchanged
-            sql.update("UPDATE tribe_goals SET target_value = :target, updated_by = :userId, updated_at = :now WHERE goal_id = :goalId",
-                    p.addValue("goalId", goalId));
-        }
-        sql.update("""
-                INSERT INTO tribe_goal_changes (change_id, goal_id, old_target, new_target, changed_by, changed_at)
-                VALUES (:changeId, :goalId, :old, :target, :userId, :now)
-                """, p.addValue("changeId", UUID.randomUUID()).addValue("goalId", goalId).addValue("old", old));
-        return dashboard(tribeId, userId, month);
-    }
-
-    /** Who set or changed this month's goal, newest first. */
-    @Transactional(readOnly = true)
-    public List<Map<String, Object>> goalHistory(UUID tribeId, UUID userId, YearMonth month) {
-        tribes.requireMember(tribeId, userId, false);
-        return sql.queryForList("""
-                SELECT ch.old_target AS "oldTarget", ch.new_target AS "newTarget", ch.changed_at AS "changedAt",
-                       u.first_name AS "firstName", u.profile_id AS "profileId"
-                FROM tribe_goal_changes ch
-                JOIN tribe_goals g ON g.goal_id = ch.goal_id
-                JOIN evolyn_user_details u ON u.uuid = ch.changed_by
-                WHERE g.tribe_id = :tribeId AND g.metric_type = :metric AND g.period_start = :start
-                ORDER BY ch.changed_at DESC
-                """, new MapSqlParameterSource("tribeId", tribeId).addValue("metric", METRIC)
-                .addValue("start", Date.valueOf(month.atDay(1))));
     }
 
     // ── The month's numbers ──────────────────────────────────────────────────
@@ -190,6 +130,51 @@ public class TribeDashboardService {
         GoalMath.rank(board, r -> BigDecimal.valueOf(r.tally().days.size()))
                 .forEach(x -> rankDays.put((UUID) x.item().member().get("user_id"), x.rank()));
 
+        // Each member's daily goal (as of today, or the month's last day for a past month)
+        // and their target for the month; the tribe's target is the sum of those
+        List<UUID> memberIds = members.stream().map(m -> (UUID) m.get("user_id")).toList();
+        Map<UUID, List<DailyGoalMath.Change>> goals = dailyGoals.changesFor(memberIds);
+        LocalDate goalDay = today.isBefore(start) ? start : today.isAfter(end) ? end : today;
+        Map<UUID, Integer> dailyGoalOf = new HashMap<>();
+        Map<UUID, Long> monthTargetOf = new HashMap<>();
+        long tribeTarget = 0;
+        long tribeDaily = 0;
+        int membersWithGoal = 0;
+        for (UUID u : memberIds) {
+            List<DailyGoalMath.Change> c = goals.getOrDefault(u, List.of());
+            int daily = DailyGoalMath.goalOn(c, goalDay);
+            long memberTarget = DailyGoalMath.target(c, start, end);
+            dailyGoalOf.put(u, daily);
+            monthTargetOf.put(u, memberTarget);
+            tribeTarget += memberTarget;
+            tribeDaily += daily;
+            if (daily > 0) membersWithGoal++;
+        }
+
+        // Progress compares like with like: only calories burned on days a member had a goal
+        // count towards the goal (someone who sets a goal on the 24th has 7 days of target,
+        // so their 1st-23rd don't count). The goal's own period starts on the first day
+        // anyone had one, so pace and projection aren't spread over days without a goal.
+        Map<UUID, BigDecimal> goalKcalOf = new HashMap<>();
+        BigDecimal goalTotal = BigDecimal.ZERO;
+        for (Map<String, Object> r : rows) {
+            UUID u = (UUID) r.get("user_id");
+            LocalDate day = ((Date) r.get("activity_date")).toLocalDate();
+            if (DailyGoalMath.goalOn(goals.getOrDefault(u, List.of()), day) == 0) continue;
+            BigDecimal kcal = (BigDecimal) r.get("kcal");
+            goalKcalOf.merge(u, kcal, BigDecimal::add);
+            goalTotal = goalTotal.add(kcal);
+        }
+        LocalDate goalStart = null;
+        for (LocalDate d = start; !d.isAfter(end) && goalStart == null; d = d.plusDays(1)) {
+            for (UUID u : memberIds) {
+                if (DailyGoalMath.goalOn(goals.getOrDefault(u, List.of()), d) > 0) {
+                    goalStart = d;
+                    break;
+                }
+            }
+        }
+
         BigDecimal totalForShare = total;
         List<Map<String, Object>> leaderboard = new ArrayList<>();
         Map<String, Object> me = null;
@@ -209,6 +194,13 @@ public class TribeDashboardService {
             e.put("rankByDays", rankDays.get(u));
             e.put("sharePercent", totalForShare.signum() == 0 ? BigDecimal.ZERO
                     : r.tally().kcal.multiply(BigDecimal.valueOf(100)).divide(totalForShare, 1, RoundingMode.HALF_UP));
+            int daily = dailyGoalOf.get(u);
+            long monthTarget = monthTargetOf.get(u);
+            e.put("dailyGoal", daily == 0 ? null : daily);
+            e.put("monthTarget", monthTarget == 0 ? null : monthTarget);
+            e.put("goalKcal", goalKcalOf.getOrDefault(u, BigDecimal.ZERO).setScale(0, RoundingMode.HALF_UP));
+            e.put("goalPercent", monthTarget == 0 ? null
+                    : goalKcalOf.getOrDefault(u, BigDecimal.ZERO).multiply(BigDecimal.valueOf(100)).divide(BigDecimal.valueOf(monthTarget), 1, RoundingMode.HALF_UP));
             leaderboard.add(e);
             if (u.equals(userId)) me = e;
         }
@@ -217,32 +209,22 @@ public class TribeDashboardService {
         List<Map<String, Object>> daily = new ArrayList<>();
         perDay.forEach((d, k) -> daily.add(Map.of("date", d, "kcal", k.setScale(0, RoundingMode.HALF_UP))));
 
-        // This month's goal, or a suggestion from the latest earlier one
-        List<Map<String, Object>> goalRows = sql.queryForList("""
-                SELECT g.goal_id, g.target_value, g.updated_at, u.first_name AS updated_by_name, u.profile_id AS updated_by_profile
-                FROM tribe_goals g JOIN evolyn_user_details u ON u.uuid = g.updated_by
-                WHERE g.tribe_id = :tribeId AND g.metric_type = :metric AND g.period_start = :start
-                """, p);
+        // The tribe's goal: the members' daily goals added up over the month
         Map<String, Object> goal = null;
         Map<String, Object> progress = null;
-        if (!goalRows.isEmpty()) {
-            Map<String, Object> g = goalRows.get(0);
-            BigDecimal target = (BigDecimal) g.get("target_value");
+        if (tribeTarget > 0) {
             goal = new LinkedHashMap<>();
-            goal.put("goalId", g.get("goal_id"));
             goal.put("metricType", METRIC);
             goal.put("unit", UNIT);
-            goal.put("target", target.setScale(0, RoundingMode.HALF_UP));
-            goal.put("updatedAt", g.get("updated_at"));
-            goal.put("updatedByName", g.get("updated_by_name"));
-            goal.put("updatedByProfileId", g.get("updated_by_profile"));
-            progress = toMap(GoalMath.progress(target, total, start, end, today));
+            goal.put("source", "MEMBERS");
+            goal.put("target", tribeTarget);
+            goal.put("dailyTarget", tribeDaily);
+            goal.put("membersWithGoal", membersWithGoal);
+            goal.put("memberCount", members.size());
+            goal.put("startsOn", goalStart);
+            goal.put("total", goalTotal.setScale(0, RoundingMode.HALF_UP));
+            progress = toMap(GoalMath.progress(BigDecimal.valueOf(tribeTarget), goalTotal, goalStart, end, today));
         }
-        List<BigDecimal> earlier = sql.queryForList("""
-                SELECT target_value FROM tribe_goals
-                WHERE tribe_id = :tribeId AND metric_type = :metric AND period_start < :start
-                ORDER BY period_start DESC LIMIT 1
-                """, p, BigDecimal.class);
 
         long totalDays = end.toEpochDay() - start.toEpochDay() + 1;
         long elapsed = today.isBefore(start) ? 0 : today.isAfter(end) ? totalDays : today.toEpochDay() - start.toEpochDay() + 1;
@@ -257,8 +239,7 @@ public class TribeDashboardService {
         out.put("averagePerDay", elapsed == 0 ? null : total.divide(BigDecimal.valueOf(elapsed), 0, RoundingMode.HALF_UP));
         out.put("goal", goal);
         out.put("progress", progress);
-        out.put("suggestedTarget", earlier.isEmpty() ? null : earlier.get(0).setScale(0, RoundingMode.HALF_UP));
-        out.put("canSetGoal", !month.isBefore(YearMonth.from(today)));
+        out.put("membersWithGoal", membersWithGoal);
         out.put("daily", daily);
         out.put("leaderboard", leaderboard);
         out.put("me", me);
