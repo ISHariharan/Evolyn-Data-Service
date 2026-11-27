@@ -26,8 +26,10 @@ import com.evolyn.evolyn_data_service.Weight.WeightLogRepository;
 /**
  * Logging, editing and deleting your own activities.
  *
- * Every save works out the calories on the server (never trusted from the
- * browser) and stores the inputs used, so the number can always be explained.
+ * Every save works out the calories on the server and stores the inputs used,
+ * so the number can always be explained. A person can instead enter the calories
+ * they burned (from a watch or a gym machine); that's saved as ENTERED_V1 and
+ * shown as "entered" to their tribes.
  */
 @Service
 public class ActivityService {
@@ -52,9 +54,11 @@ public class ActivityService {
     /**
      * startedAt is India local time, e.g. "2026-11-22T18:30".
      * allowOverlap: set after the person confirms an overlapping activity is really separate.
+     * enteredKcal: calories they burned, to use instead of the estimate (empty = estimate).
      */
     public record ActivityRequest(UUID userId, String activityCode, LocalDateTime startedAt, Integer durationMinutes,
-                                  BigDecimal distanceKm, String notes, String visibility, Boolean allowOverlap) {}
+                                  BigDecimal distanceKm, String notes, String visibility, Boolean allowOverlap,
+                                  Integer enteredKcal) {}
 
     // ── What it gets back ────────────────────────────────────────────────────
     public record Calculation(BigDecimal kcal, BigDecimal met, BigDecimal weightKg, LocalDate weightRecordedOn,
@@ -63,7 +67,7 @@ public class ActivityService {
     public record ActivityView(UUID id, String activityCode, String headingCode, String description,
                                LocalDateTime startedAt, LocalDate activityDate, int durationMinutes,
                                BigDecimal distanceKm, String notes, String visibility, String source,
-                               BigDecimal kcal, Calculation calculation) {}
+                               BigDecimal kcal, boolean kcalEntered, Calculation calculation) {}
 
     public record ActivityList(LocalDate from, LocalDate to, int count, int activeDays, BigDecimal totalKcal,
                                int totalMinutes, List<ActivityView> activities) {}
@@ -93,7 +97,7 @@ public class ActivityService {
         activity.setCreatedAt(Instant.now());
         apply(activity, request, c);
         activities.save(activity);
-        ActivityCalculationEntity calc = calculate(activity, null);
+        ActivityCalculationEntity calc = calculate(activity, null, c.enteredKcal);
         return view(activity, calc);
     }
 
@@ -104,14 +108,17 @@ public class ActivityService {
         ActivityCalculationEntity old = calculations
                 .findByActivityIdAndMetricTypeAndCurrentTrue(activityId, CalorieCalculator.METRIC).orElse(null);
 
-        // Only a change to what, when or how long changes the calories
+        // Only a change to what, when or how long, or to the entered calories, changes the calories
+        boolean wasEntered = old != null && CalorieCalculator.ENTERED_VERSION.equals(old.getFormulaVersion());
         boolean recalc = old == null
                 || !activity.getDefinition().getActivityDefinitionId().equals(c.definition.getActivityDefinitionId())
                 || activity.getDurationSeconds() != c.durationSeconds
-                || !activity.getActivityDate().equals(c.activityDate);
+                || !activity.getActivityDate().equals(c.activityDate)
+                || wasEntered != (c.enteredKcal != null)
+                || (c.enteredKcal != null && c.enteredKcal.compareTo(old.getMetricValue()) != 0);
         apply(activity, request, c);
         activities.save(activity);
-        ActivityCalculationEntity calc = recalc ? calculate(activity, old) : old;
+        ActivityCalculationEntity calc = recalc ? calculate(activity, old, c.enteredKcal) : old;
         return view(activity, calc);
     }
 
@@ -154,7 +161,7 @@ public class ActivityService {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
     private record Checked(ActivityDefinitionEntity definition, Instant startedAt, LocalDate activityDate,
-                           int durationSeconds, String visibility) {}
+                           int durationSeconds, String visibility, BigDecimal enteredKcal) {}
 
     /** existing: the activity being edited, or null for a new one. */
     private Checked check(ActivityRequest r, UserActivityEntity existing) {
@@ -170,6 +177,10 @@ public class ActivityService {
         if (r.notes() != null && r.notes().length() > 500) throw new Problem(HttpStatus.BAD_REQUEST, "Notes can be at most 500 characters");
         String visibility = r.visibility() == null ? "TRIBES" : r.visibility();
         if (!VISIBILITIES.contains(visibility)) throw new Problem(HttpStatus.BAD_REQUEST, "visibility must be TRIBES or PRIVATE");
+        if (r.enteredKcal() != null && (r.enteredKcal() < 1 || r.enteredKcal() > CalorieCalculator.MAX_ENTERED_KCAL)) {
+            throw new Problem(HttpStatus.BAD_REQUEST, "Calories burned must be between 1 and 5,000 kcal");
+        }
+        BigDecimal enteredKcal = r.enteredKcal() == null ? null : BigDecimal.valueOf(r.enteredKcal()).setScale(2);
 
         ActivityDefinitionEntity definition = definitions.findFirstByActivityCodeAndActiveTrue(r.activityCode().trim())
                 .orElseThrow(() -> new Problem(HttpStatus.BAD_REQUEST, "Unknown activity " + r.activityCode()));
@@ -198,7 +209,7 @@ public class ActivityService {
             }
         }
         LocalDate activityDate = r.startedAt().toLocalDate();
-        return new Checked(definition, startedAt, activityDate, seconds, visibility);
+        return new Checked(definition, startedAt, activityDate, seconds, visibility, enteredKcal);
     }
 
     private static void apply(UserActivityEntity a, ActivityRequest r, Checked c) {
@@ -212,16 +223,21 @@ public class ActivityService {
         a.setUpdatedAt(Instant.now());
     }
 
-    private ActivityCalculationEntity calculate(UserActivityEntity a, ActivityCalculationEntity previous) {
+    /** entered: the calories the person entered, or null to estimate them. */
+    private ActivityCalculationEntity calculate(UserActivityEntity a, ActivityCalculationEntity previous, BigDecimal entered) {
         // The latest weight on or before the activity's day. For an activity from
         // before the first weight was saved (e.g. yesterday's practice, logged right
         // after setting up), use that first weight; which day it came from is saved.
+        // Entered calories don't need a weight, but one is kept with them when there is one.
         WeightLogEntity weight = weights
                 .findFirstByUserIdAndRecordedOnLessThanEqualOrderByRecordedOnDesc(a.getUserId(), a.getActivityDate())
                 .or(() -> weights.findFirstByUserIdOrderByRecordedOnAsc(a.getUserId()))
-                .orElseThrow(() -> new Problem(HttpStatus.CONFLICT, Map.of(
-                        "code", "WEIGHT_REQUIRED",
-                        "message", "Save your weight first: calories are worked out from it")));
+                .orElse(null);
+        if (weight == null && entered == null) {
+            throw new Problem(HttpStatus.CONFLICT, Map.of(
+                    "code", "WEIGHT_REQUIRED",
+                    "message", "Save your weight first, or enter the calories you burned"));
+        }
 
         if (previous != null) {
             previous.setCurrent(false);
@@ -233,14 +249,15 @@ public class ActivityService {
         calc.setActivityId(a.getActivityId());
         calc.setMetricType(CalorieCalculator.METRIC);
         calc.setUnit(CalorieCalculator.UNIT);
-        calc.setFormulaVersion(CalorieCalculator.FORMULA_VERSION);
+        calc.setFormulaVersion(entered != null ? CalorieCalculator.ENTERED_VERSION : CalorieCalculator.FORMULA_VERSION);
         calc.setMetValue(d.getMetValue());
-        calc.setWeightKgUsed(weight.getWeightKg());
-        calc.setWeightRecordedOn(weight.getRecordedOn());
+        calc.setWeightKgUsed(weight == null ? null : weight.getWeightKg());
+        calc.setWeightRecordedOn(weight == null ? null : weight.getRecordedOn());
         calc.setDurationSeconds(a.getDurationSeconds());
         calc.setReferenceEdition(d.getEdition());
         calc.setReferenceActivityCode(d.getActivityCode());
-        calc.setMetricValue(CalorieCalculator.kcal(d.getMetValue(), weight.getWeightKg(), a.getDurationSeconds()));
+        calc.setMetricValue(entered != null ? entered
+                : CalorieCalculator.kcal(d.getMetValue(), weight.getWeightKg(), a.getDurationSeconds()));
         calc.setCurrent(true);
         calc.setCalculatedAt(Instant.now());
         return calculations.save(calc);
@@ -265,6 +282,7 @@ public class ActivityService {
         return new ActivityView(a.getActivityId(), d.getActivityCode(), d.getHeadingCode(), d.getDescription(),
                 localTime(a.getStartedAt()), a.getActivityDate(), a.getDurationSeconds() / 60, a.getDistanceKm(),
                 a.getNotes(), a.getVisibility(), a.getSource(),
-                c == null ? null : c.getMetricValue().setScale(0, RoundingMode.HALF_UP), calc);
+                c == null ? null : c.getMetricValue().setScale(0, RoundingMode.HALF_UP),
+                c != null && CalorieCalculator.ENTERED_VERSION.equals(c.getFormulaVersion()), calc);
     }
 }

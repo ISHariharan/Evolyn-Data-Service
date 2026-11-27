@@ -61,7 +61,7 @@ public class TribeFeedController {
                 SELECT a.activity_id, a.user_id, u.first_name, u.last_name, u.profile_id,
                        d.activity_code, d.description, d.heading_code, h.counts_for_goals,
                        a.started_at, a.activity_date, a.duration_seconds, a.distance_km,
-                       c.metric_value AS kcal
+                       c.metric_value AS kcal, c.formula_version
                 FROM user_activities a
                 JOIN tribe_members m ON m.user_id = a.user_id AND m.tribe_id = :tribeId AND m.status = 'ACTIVE'
                 JOIN evolyn_user_details u ON u.uuid = a.user_id
@@ -93,6 +93,8 @@ public class TribeFeedController {
             item.put("durationMinutes", rs.getInt("duration_seconds") / 60);
             item.put("distanceKm", rs.getBigDecimal("distance_km"));
             item.put("kcal", kcal == null ? null : kcal.setScale(0, RoundingMode.HALF_UP));
+            // Entered by the person (e.g. from a watch) rather than estimated
+            item.put("kcalEntered", "ENTERED_V1".equals(rs.getString("formula_version")));
             return item;
         });
 

@@ -17,6 +17,9 @@ import java.math.RoundingMode;
 public final class CalorieCalculator {
 
     public static final String FORMULA_VERSION = "MET_GROSS_V1";
+    /** Calories the person entered themselves (e.g. from a watch), instead of the estimate. */
+    public static final String ENTERED_VERSION = "ENTERED_V1";
+    public static final int MAX_ENTERED_KCAL = 5000;
     public static final String METRIC = "CALORIES_BURNED";
     public static final String UNIT = "kcal";
 

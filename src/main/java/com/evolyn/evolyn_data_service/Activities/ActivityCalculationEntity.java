@@ -40,10 +40,10 @@ public class ActivityCalculationEntity {
     @Column(name = "met_value", nullable = false, precision = 4, scale = 1)
     private BigDecimal metValue;
 
-    @Column(name = "weight_kg_used", nullable = false, precision = 5, scale = 2)
+    @Column(name = "weight_kg_used", precision = 5, scale = 2) // empty for entered calories without a weight
     private BigDecimal weightKgUsed;
 
-    @Column(name = "weight_recorded_on", nullable = false)
+    @Column(name = "weight_recorded_on")
     private LocalDate weightRecordedOn;
 
     @Column(name = "duration_seconds", nullable = false)
